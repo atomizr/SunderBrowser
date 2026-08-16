@@ -1,4 +1,13 @@
 <RCC>
+    <qresource prefix="/icons">
+        <file>icons/back.png</file>
+        <file>icons/forward.png</file>
+        <file>icons/reload.png</file>
+        <file>icons/stop.png</file>
+        <file>icons/home.png</file>
+        <file>icons/add.png</file>
+        <file>icons/settings.png</file>
+    </qresource>
     <qresource prefix="/">
         <file>app.ico</file>
     </qresource>
