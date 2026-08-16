@@ -12,6 +12,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QUrl>
+#include <QKeyEvent>   // добавлено
 
 class BrowserTab : public QWidget
 {
@@ -39,7 +40,7 @@ private:
     QProgressBar *m_progressBar;
     void setupContextMenu();
     void showContextMenu(const QPoint &pos);
-    void savePageSource(); // новый метод
+    void savePageSource();
 };
 
 class BrowserWindow : public QMainWindow
@@ -52,6 +53,7 @@ public:
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;   // добавлено
 
 private slots:
     void addNewTab(const QUrl &url = QUrl());
