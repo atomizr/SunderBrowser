@@ -24,6 +24,8 @@
 #include <QFileInfo>
 #include <QStyle>
 #include <QStatusBar>
+#include <QFile>          // добавлено для записи файла
+#include <QTextStream>    // добавлено для записи
 
 // -------------------- BrowserTab --------------------
 BrowserTab::BrowserTab(QWidget *parent) : QWidget(parent)
@@ -76,11 +78,87 @@ void BrowserTab::showContextMenu(const QPoint &pos)
 {
     QMenu *menu = new QMenu;
     menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    // Просмотр исходного кода
     QAction *viewSource = menu->addAction("Просмотреть исходный код");
     connect(viewSource, &QAction::triggered, [this]() {
-        m_webView->page()->action(QWebEnginePage::ViewSource)->trigger();
+        QUrl currentUrl = m_webView->url();
+        if (currentUrl.isValid() && !currentUrl.isEmpty()) {
+            QUrl viewSourceUrl("view-source:" + currentUrl.toString());
+            m_webView->load(viewSourceUrl);
+        } else {
+            if (QMainWindow *mw = qobject_cast<QMainWindow*>(window())) {
+                if (QStatusBar *sb = mw->statusBar()) {
+                    sb->showMessage("Нет страницы для просмотра исходного кода", 2000);
+                }
+            }
+        }
     });
+
+    // Сохранить исходный код на диск
+    QAction *saveSource = menu->addAction("Сохранить исходный код...");
+    connect(saveSource, &QAction::triggered, [this]() {
+        savePageSource();
+    });
+
     menu->popup(m_webView->mapToGlobal(pos));
+}
+
+// Новый метод для сохранения исходного кода
+void BrowserTab::savePageSource()
+{
+    QWebEnginePage *page = m_webView->page();
+    if (!page) return;
+
+    // Асинхронно получаем HTML-код страницы
+    page->toHtml([this](const QString &html) {
+        if (html.isEmpty()) {
+            if (QMainWindow *mw = qobject_cast<QMainWindow*>(window())) {
+                if (QStatusBar *sb = mw->statusBar()) {
+                    sb->showMessage("Не удалось получить исходный код страницы", 2000);
+                }
+            }
+            return;
+        }
+
+        // Предлагаем имя файла (на основе заголовка или URL)
+        QString defaultName = "page.html";
+        QString title = m_webView->title();
+        if (!title.isEmpty()) {
+            defaultName = title + ".html";
+            defaultName.replace(QRegularExpression("[<>:\"/\\|?*]"), "_"); // заменяем недопустимые символы
+        }
+
+        QString savePath = QFileDialog::getSaveFileName(
+            this,
+            "Сохранить исходный код",
+            QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + defaultName,
+            "HTML файлы (*.html *.htm);;Все файлы (*)"
+        );
+
+        if (savePath.isEmpty())
+            return;
+
+        QFile file(savePath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            if (QMainWindow *mw = qobject_cast<QMainWindow*>(window())) {
+                if (QStatusBar *sb = mw->statusBar()) {
+                    sb->showMessage("Не удалось сохранить файл", 2000);
+                }
+            }
+            return;
+        }
+
+        QTextStream out(&file);
+        out << html;
+        file.close();
+
+        if (QMainWindow *mw = qobject_cast<QMainWindow*>(window())) {
+            if (QStatusBar *sb = mw->statusBar()) {
+                sb->showMessage("Исходный код сохранён: " + QFileInfo(savePath).fileName(), 3000);
+            }
+        }
+    });
 }
 
 void BrowserTab::onDownloadRequested(QWebEngineDownloadRequest *download)
@@ -137,7 +215,7 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     loadSettings();
     addNewTab(QUrl(m_homePage));
 
-    QSettings appSettings("SunderBrowser", "SunderBrowser");   // изменено
+    QSettings appSettings("SunderBrowser", "SunderBrowser");
     int theme = appSettings.value("theme", 0).toInt();
     applyTheme(theme);
 }
@@ -226,7 +304,7 @@ void BrowserWindow::addNewTab(const QUrl &url)
     connect(tab, &BrowserTab::titleChanged, [this, tab, index](const QString &title) {
         m_tabWidget->setTabText(index, title);
         if (m_tabWidget->currentWidget() == tab)
-            setWindowTitle(title + " - Sunder Browser");   // изменено
+            setWindowTitle(title + " - Sunder Browser");
     });
     connect(tab, &BrowserTab::urlChanged, [this, tab](const QUrl &url) {
         if (m_tabWidget->currentWidget() == tab)
@@ -255,7 +333,7 @@ void BrowserWindow::onCurrentTabChanged(int index)
     if (!tab) return;
 
     m_urlBar->setText(tab->currentUrl().toString());
-    setWindowTitle(tab->webView()->title() + " - Sunder Browser");   // изменено
+    setWindowTitle(tab->webView()->title() + " - Sunder Browser");
 }
 
 void BrowserWindow::navigateToUrl()
@@ -294,7 +372,7 @@ void BrowserWindow::reload()
     if (!tab) return;
     QWebEnginePage *page = tab->webView()->page();
     if (page && page->isLoading())
-        page->triggerAction(QWebEnginePage::Stop);   // исправлено: вместо stop() используем triggerAction
+        page->triggerAction(QWebEnginePage::Stop);
     tab->webView()->reload();
 }
 
@@ -332,7 +410,7 @@ void BrowserWindow::dropEvent(QDropEvent *event)
 
 void BrowserWindow::loadSettings()
 {
-    QSettings settings("SunderBrowser", "SunderBrowser");   // изменено
+    QSettings settings("SunderBrowser", "SunderBrowser");
     m_homePage = settings.value("homePage", "https://www.google.com").toString();
     m_searchEngine = settings.value("searchEngine", "https://www.google.com/search?q=").toString();
     m_javaScriptEnabled = settings.value("javaScriptEnabled", true).toBool();
@@ -346,7 +424,7 @@ void BrowserWindow::loadSettings()
 
 void BrowserWindow::saveSettings()
 {
-    QSettings settings("SunderBrowser", "SunderBrowser");   // изменено
+    QSettings settings("SunderBrowser", "SunderBrowser");
     settings.setValue("homePage", m_homePage);
     settings.setValue("searchEngine", m_searchEngine);
     settings.setValue("javaScriptEnabled", m_javaScriptEnabled);
@@ -389,7 +467,7 @@ void BrowserWindow::openSettings()
     dialog.setZoom(m_zoom);
     dialog.setWindowOpacity(windowOpacity());
 
-    QSettings appSettings("SunderBrowser", "SunderBrowser");   // изменено
+    QSettings appSettings("SunderBrowser", "SunderBrowser");
     dialog.setTheme(appSettings.value("theme", 0).toInt());
 
     if (dialog.exec() == QDialog::Accepted) {
