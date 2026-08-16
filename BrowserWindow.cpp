@@ -5,6 +5,8 @@
 #include <QUrl>
 #include <QSettings>
 #include <QApplication>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QWebEngineSettings>
 #include <QWebEngineHistory>
 #include <QWebEnginePage>
@@ -20,6 +22,8 @@
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QFileInfo>
+#include <QStyle>
+#include <QStatusBar>
 
 // -------------------- BrowserTab --------------------
 BrowserTab::BrowserTab(QWidget *parent) : QWidget(parent)
@@ -46,14 +50,10 @@ BrowserTab::BrowserTab(QWidget *parent) : QWidget(parent)
         m_progressBar->setValue(progress);
         emit loadProgress(progress);
     });
-    connect(m_webView, &QWebEngineView::loadFinished, [this](bool ok) {
-        m_progressBar->setVisible(false);
-        emit loadFinished(ok);
-    });
+    connect(m_webView, &QWebEngineView::loadFinished, this, &BrowserTab::onLoadFinished);
     connect(m_webView, &QWebEngineView::urlChanged, this, &BrowserTab::urlChanged);
     connect(m_webView, &QWebEngineView::titleChanged, this, &BrowserTab::titleChanged);
 
-    // Настройка загрузки файлов (сигнал downloadRequested теперь в QWebEngineProfile)
     auto profile = m_webView->page()->profile();
     profile->setDownloadPath(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
     connect(profile, &QWebEngineProfile::downloadRequested, this, &BrowserTab::onDownloadRequested);
@@ -74,7 +74,8 @@ void BrowserTab::setupContextMenu()
 
 void BrowserTab::showContextMenu(const QPoint &pos)
 {
-    QMenu *menu = new QMenu(this);
+    QMenu *menu = new QMenu;
+    menu->setAttribute(Qt::WA_DeleteOnClose);
     QAction *viewSource = menu->addAction("Просмотреть исходный код");
     connect(viewSource, &QAction::triggered, [this]() {
         m_webView->page()->action(QWebEnginePage::ViewSource)->trigger();
@@ -97,14 +98,51 @@ void BrowserTab::onDownloadRequested(QWebEngineDownloadRequest *download)
     }
 }
 
+void BrowserTab::onLoadFinished(bool ok)
+{
+    m_progressBar->setVisible(false);
+    if (!ok) {
+        if (QMainWindow *mw = qobject_cast<QMainWindow*>(window())) {
+            if (QStatusBar *sb = mw->statusBar()) {
+                sb->showMessage("Ошибка загрузки страницы", 3000);
+            }
+        }
+    }
+    emit loadFinished(ok);
+}
+
 // -------------------- BrowserWindow --------------------
 BrowserWindow::BrowserWindow(QWidget *parent)
-    : QMainWindow(parent)
+    : QMainWindow(parent), m_zoom(1.0), m_javaScriptEnabled(true)
 {
     setAcceptDrops(true);
+
+    // ---- Принудительная непрозрачность ----
+    setWindowOpacity(1.0);
+
+    // ---- Адаптивный размер ----
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (screen) {
+        QRect available = screen->availableGeometry();
+        int width = available.width() * 0.8;
+        int height = available.height() * 0.8;
+        width = qMax(width, 800);
+        height = qMax(height, 600);
+        resize(width, height);
+        move(available.x() + (available.width() - width) / 2,
+             available.y() + (available.height() - height) / 2);
+    } else {
+        resize(1024, 768);
+    }
+    // ------------------------------------------------
+
     setupUI();
     loadSettings();
     addNewTab(QUrl(m_homePage));
+
+    QSettings appSettings("MyCompany", "SimpleBrowser");
+    int theme = appSettings.value("theme", 0).toInt();
+    applyTheme(theme);
 }
 
 BrowserWindow::~BrowserWindow()
@@ -114,7 +152,7 @@ BrowserWindow::~BrowserWindow()
 void BrowserWindow::setupUI()
 {
     createToolbar();
-
+    statusBar()->showMessage("Готово");
     m_tabWidget = new QTabWidget(this);
     m_tabWidget->setTabsClosable(true);
     m_tabWidget->setMovable(true);
@@ -129,13 +167,20 @@ void BrowserWindow::createToolbar()
     toolbar->setMovable(false);
     toolbar->setIconSize(QSize(24, 24));
 
-    m_backButton = new QPushButton("←");
-    m_forwardButton = new QPushButton("→");
-    m_reloadButton = new QPushButton("↻");
-    m_stopButton = new QPushButton("✖");
-    m_homeButton = new QPushButton("🏠");
-    m_addTabButton = new QPushButton("+");
-    m_settingsButton = new QPushButton("⚙");
+    m_backButton = new QToolButton;
+    m_backButton->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
+    m_forwardButton = new QToolButton;
+    m_forwardButton->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    m_reloadButton = new QToolButton;
+    m_reloadButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    m_stopButton = new QToolButton;
+    m_stopButton->setIcon(style()->standardIcon(QStyle::SP_BrowserStop));
+    m_homeButton = new QToolButton;
+    m_homeButton->setText("🏠");
+    m_addTabButton = new QToolButton;
+    m_addTabButton->setText("+");
+    m_settingsButton = new QToolButton;
+    m_settingsButton->setText("⚙");
 
     m_urlBar = new QLineEdit();
     m_urlBar->setPlaceholderText("Введите URL или поисковый запрос...");
@@ -151,13 +196,13 @@ void BrowserWindow::createToolbar()
     toolbar->addWidget(m_addTabButton);
     toolbar->addWidget(m_settingsButton);
 
-    connect(m_backButton, &QPushButton::clicked, this, &BrowserWindow::goBack);
-    connect(m_forwardButton, &QPushButton::clicked, this, &BrowserWindow::goForward);
-    connect(m_reloadButton, &QPushButton::clicked, this, &BrowserWindow::reload);
-    connect(m_stopButton, &QPushButton::clicked, this, &BrowserWindow::stop);
-    connect(m_homeButton, &QPushButton::clicked, this, &BrowserWindow::home);
-    connect(m_addTabButton, &QPushButton::clicked, this, [this]() { addNewTab(QUrl(m_homePage)); });
-    connect(m_settingsButton, &QPushButton::clicked, this, &BrowserWindow::openSettings);
+    connect(m_backButton, &QToolButton::clicked, this, &BrowserWindow::goBack);
+    connect(m_forwardButton, &QToolButton::clicked, this, &BrowserWindow::goForward);
+    connect(m_reloadButton, &QToolButton::clicked, this, &BrowserWindow::reload);
+    connect(m_stopButton, &QToolButton::clicked, this, &BrowserWindow::stop);
+    connect(m_homeButton, &QToolButton::clicked, this, &BrowserWindow::home);
+    connect(m_addTabButton, &QToolButton::clicked, this, [this]() { addNewTab(QUrl(m_homePage)); });
+    connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::openSettings);
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
 }
 
@@ -166,11 +211,20 @@ BrowserTab* BrowserWindow::currentTab() const
     return qobject_cast<BrowserTab*>(m_tabWidget->currentWidget());
 }
 
+void BrowserWindow::applySettingsToTab(BrowserTab *tab)
+{
+    if (!tab) return;
+    tab->webView()->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, m_javaScriptEnabled);
+    tab->webView()->setZoomFactor(m_zoom);
+}
+
 void BrowserWindow::addNewTab(const QUrl &url)
 {
     BrowserTab *tab = new BrowserTab(this);
     int index = m_tabWidget->addTab(tab, "Новая вкладка");
     m_tabWidget->setCurrentIndex(index);
+
+    applySettingsToTab(tab);
 
     connect(tab, &BrowserTab::titleChanged, [this, tab, index](const QString &title) {
         m_tabWidget->setTabText(index, title);
@@ -228,13 +282,10 @@ void BrowserWindow::navigateToUrl()
     QString text = m_urlBar->text().trimmed();
     if (text.isEmpty()) return;
 
-    QUrl url;
-    if (text.contains(".") && !text.contains(" ")) {
-        if (!text.startsWith("http://") && !text.startsWith("https://"))
-            text = "http://" + text;
-        url = QUrl(text);
-    } else {
-        url = QUrl(m_searchEngine + QUrl::toPercentEncoding(text));
+    QUrl url = QUrl::fromUserInput(text);
+    if (!url.isValid()) {
+        statusBar()->showMessage("Некорректный URL", 2000);
+        return;
     }
     tab->navigateToUrl(url);
 }
@@ -275,13 +326,10 @@ void BrowserWindow::dropEvent(QDropEvent *event)
 {
     const QList<QUrl> urls = event->mimeData()->urls();
     for (const QUrl &url : urls) {
-        if (url.isLocalFile()) {
-            QString filePath = url.toLocalFile();
-            if (filePath.endsWith(".html", Qt::CaseInsensitive) ||
-                filePath.endsWith(".htm", Qt::CaseInsensitive)) {
-                if (BrowserTab *tab = currentTab()) {
-                    tab->navigateToUrl(url);
-                }
+        if (url.isValid()) {
+            if (BrowserTab *tab = currentTab()) {
+                tab->navigateToUrl(url);
+                break;
             }
         }
     }
@@ -294,16 +342,12 @@ void BrowserWindow::loadSettings()
     m_homePage = settings.value("homePage", "https://www.google.com").toString();
     m_searchEngine = settings.value("searchEngine", "https://www.google.com/search?q=").toString();
     m_javaScriptEnabled = settings.value("javaScriptEnabled", true).toBool();
+    m_zoom = settings.value("zoom", 1.0).toDouble();
 
-    double zoom = settings.value("zoom", 1.0).toDouble();
     double opacity = settings.value("opacity", 1.0).toDouble();
-
+    if (opacity <= 0.0 || opacity > 1.0)
+        opacity = 1.0;  // защита от невалидного значения (0 делает окно невидимым)
     window()->setWindowOpacity(opacity);
-    for (int i = 0; i < m_tabWidget->count(); ++i) {
-        BrowserTab *tab = qobject_cast<BrowserTab*>(m_tabWidget->widget(i));
-        if (tab)
-            tab->webView()->setZoomFactor(zoom);
-    }
 }
 
 void BrowserWindow::saveSettings()
@@ -312,10 +356,34 @@ void BrowserWindow::saveSettings()
     settings.setValue("homePage", m_homePage);
     settings.setValue("searchEngine", m_searchEngine);
     settings.setValue("javaScriptEnabled", m_javaScriptEnabled);
-    if (BrowserTab *tab = currentTab()) {
-        settings.setValue("zoom", tab->webView()->zoomFactor());
-    }
+    settings.setValue("zoom", m_zoom);
     settings.setValue("opacity", windowOpacity());
+}
+
+void BrowserWindow::applyTheme(int themeIndex)
+{
+    QPalette pal;
+    switch (themeIndex) {
+    case 1: // Тёмная
+        pal.setColor(QPalette::Window, QColor(53, 53, 53));
+        pal.setColor(QPalette::WindowText, Qt::white);
+        pal.setColor(QPalette::Base, QColor(25, 25, 25));
+        pal.setColor(QPalette::AlternateBase, QColor(53, 53, 53));
+        pal.setColor(QPalette::ToolTipBase, Qt::white);
+        pal.setColor(QPalette::ToolTipText, Qt::white);
+        pal.setColor(QPalette::Text, Qt::white);
+        pal.setColor(QPalette::Button, QColor(53, 53, 53));
+        pal.setColor(QPalette::ButtonText, Qt::white);
+        pal.setColor(QPalette::BrightText, Qt::red);
+        pal.setColor(QPalette::Link, QColor(42, 130, 218));
+        pal.setColor(QPalette::Highlight, QColor(42, 130, 218));
+        pal.setColor(QPalette::HighlightedText, Qt::black);
+        qApp->setPalette(pal);
+        break;
+    default: // Светлая или системная
+        qApp->setPalette(QApplication::style()->standardPalette());
+        break;
+    }
 }
 
 void BrowserWindow::openSettings()
@@ -324,8 +392,7 @@ void BrowserWindow::openSettings()
     dialog.setHomePage(m_homePage);
     dialog.setSearchEngine(m_searchEngine);
     dialog.setJavaScriptEnabled(m_javaScriptEnabled);
-    if (BrowserTab *tab = currentTab())
-        dialog.setZoom(tab->webView()->zoomFactor());
+    dialog.setZoom(m_zoom);
     dialog.setWindowOpacity(windowOpacity());
 
     QSettings appSettings("MyCompany", "SimpleBrowser");
@@ -335,24 +402,21 @@ void BrowserWindow::openSettings()
         m_homePage = dialog.getHomePage();
         m_searchEngine = dialog.getSearchEngine();
         m_javaScriptEnabled = dialog.isJavaScriptEnabled();
-
-        double zoom = dialog.getZoom();
+        m_zoom = dialog.getZoom();
         double opacity = dialog.getWindowOpacity();
         int theme = dialog.getTheme();
 
         for (int i = 0; i < m_tabWidget->count(); ++i) {
             BrowserTab *tab = qobject_cast<BrowserTab*>(m_tabWidget->widget(i));
             if (tab) {
-                tab->webView()->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, m_javaScriptEnabled);
-                tab->webView()->setZoomFactor(zoom);
+                applySettingsToTab(tab);
             }
         }
         window()->setWindowOpacity(opacity);
         appSettings.setValue("theme", theme);
 
-        // Применить тему (если реализовано)
-        // applyTheme(theme);
-
+        applyTheme(theme);
         saveSettings();
+        statusBar()->showMessage("Настройки сохранены", 2000);
     }
 }
