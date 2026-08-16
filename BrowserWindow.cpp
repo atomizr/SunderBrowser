@@ -117,10 +117,8 @@ BrowserWindow::BrowserWindow(QWidget *parent)
 {
     setAcceptDrops(true);
 
-    // Принудительная непрозрачность
     setWindowOpacity(1.0);
 
-    // Адаптивный размер
     QScreen *screen = QGuiApplication::primaryScreen();
     if (screen) {
         QRect available = screen->availableGeometry();
@@ -139,7 +137,7 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     loadSettings();
     addNewTab(QUrl(m_homePage));
 
-    QSettings appSettings("MyCompany", "SimpleBrowser");
+    QSettings appSettings("SunderBrowser", "SunderBrowser");   // изменено
     int theme = appSettings.value("theme", 0).toInt();
     applyTheme(theme);
 }
@@ -195,7 +193,6 @@ void BrowserWindow::createToolbar()
     toolbar->addWidget(m_addTabButton);
     toolbar->addWidget(m_settingsButton);
 
-    // Все кнопки всегда активны
     connect(m_backButton, &QToolButton::clicked, this, &BrowserWindow::goBack);
     connect(m_forwardButton, &QToolButton::clicked, this, &BrowserWindow::goForward);
     connect(m_reloadButton, &QToolButton::clicked, this, &BrowserWindow::reload);
@@ -229,13 +226,12 @@ void BrowserWindow::addNewTab(const QUrl &url)
     connect(tab, &BrowserTab::titleChanged, [this, tab, index](const QString &title) {
         m_tabWidget->setTabText(index, title);
         if (m_tabWidget->currentWidget() == tab)
-            setWindowTitle(title + " - Simple Browser");
+            setWindowTitle(title + " - Sunder Browser");   // изменено
     });
     connect(tab, &BrowserTab::urlChanged, [this, tab](const QUrl &url) {
         if (m_tabWidget->currentWidget() == tab)
             m_urlBar->setText(url.toString());
     });
-    // Состояние кнопок не управляется
     connect(tab, &BrowserTab::loadStarted, [this, tab]() {});
     connect(tab, &BrowserTab::loadFinished, [this, tab](bool ok) {});
 
@@ -259,7 +255,7 @@ void BrowserWindow::onCurrentTabChanged(int index)
     if (!tab) return;
 
     m_urlBar->setText(tab->currentUrl().toString());
-    setWindowTitle(tab->webView()->title() + " - Simple Browser");
+    setWindowTitle(tab->webView()->title() + " - Sunder Browser");   // изменено
 }
 
 void BrowserWindow::navigateToUrl()
@@ -298,7 +294,7 @@ void BrowserWindow::reload()
     if (!tab) return;
     QWebEnginePage *page = tab->webView()->page();
     if (page && page->isLoading())
-        tab->webView()->stop();  // Исправлено: stop() у QWebEngineView
+        page->triggerAction(QWebEnginePage::Stop);   // исправлено: вместо stop() используем triggerAction
     tab->webView()->reload();
 }
 
@@ -336,7 +332,7 @@ void BrowserWindow::dropEvent(QDropEvent *event)
 
 void BrowserWindow::loadSettings()
 {
-    QSettings settings("MyCompany", "SimpleBrowser");
+    QSettings settings("SunderBrowser", "SunderBrowser");   // изменено
     m_homePage = settings.value("homePage", "https://www.google.com").toString();
     m_searchEngine = settings.value("searchEngine", "https://www.google.com/search?q=").toString();
     m_javaScriptEnabled = settings.value("javaScriptEnabled", true).toBool();
@@ -350,7 +346,7 @@ void BrowserWindow::loadSettings()
 
 void BrowserWindow::saveSettings()
 {
-    QSettings settings("MyCompany", "SimpleBrowser");
+    QSettings settings("SunderBrowser", "SunderBrowser");   // изменено
     settings.setValue("homePage", m_homePage);
     settings.setValue("searchEngine", m_searchEngine);
     settings.setValue("javaScriptEnabled", m_javaScriptEnabled);
@@ -362,7 +358,7 @@ void BrowserWindow::applyTheme(int themeIndex)
 {
     QPalette pal;
     switch (themeIndex) {
-    case 1: // Тёмная
+    case 1:
         pal.setColor(QPalette::Window, QColor(53, 53, 53));
         pal.setColor(QPalette::WindowText, Qt::white);
         pal.setColor(QPalette::Base, QColor(25, 25, 25));
@@ -378,7 +374,7 @@ void BrowserWindow::applyTheme(int themeIndex)
         pal.setColor(QPalette::HighlightedText, Qt::black);
         qApp->setPalette(pal);
         break;
-    default: // Светлая или системная
+    default:
         qApp->setPalette(QApplication::style()->standardPalette());
         break;
     }
@@ -393,7 +389,7 @@ void BrowserWindow::openSettings()
     dialog.setZoom(m_zoom);
     dialog.setWindowOpacity(windowOpacity());
 
-    QSettings appSettings("MyCompany", "SimpleBrowser");
+    QSettings appSettings("SunderBrowser", "SunderBrowser");   // изменено
     dialog.setTheme(appSettings.value("theme", 0).toInt());
 
     if (dialog.exec() == QDialog::Accepted) {
