@@ -39,6 +39,7 @@ private:
     QProgressBar *m_progressBar;
     void setupContextMenu();
     void showContextMenu(const QPoint &pos);
+    void savePageSource(); // новый метод
 };
 
 class BrowserWindow : public QMainWindow
