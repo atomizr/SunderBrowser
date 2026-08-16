@@ -27,6 +27,10 @@
 #include <QFile>
 #include <QTextStream>
 #include <QKeyEvent>
+#include <QMouseEvent>
+#include <QIcon>
+#include <QDir>
+#include <QCoreApplication>
 
 // -------------------- BrowserTab --------------------
 BrowserTab::BrowserTab(QWidget *parent) : QWidget(parent)
@@ -210,13 +214,31 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     loadSettings();
     addNewTab(QUrl(m_homePage));
 
-    QSettings settings; // теперь без параметров
+    QSettings settings;
     int theme = settings.value("theme", 0).toInt();
     applyTheme(theme);
 }
 
 BrowserWindow::~BrowserWindow()
 {
+}
+
+// ---- Загрузка иконок из ресурсов ----
+QIcon BrowserWindow::loadIcon(const QString &name)
+{
+    QIcon icon;
+    QString resPath = ":/icons/" + name;
+    if (QFile::exists(resPath)) {
+        icon.addFile(resPath);
+    } else {
+        QString filePath = QCoreApplication::applicationDirPath() + "/icons/" + name;
+        if (QFile::exists(filePath)) {
+            icon.addFile(filePath);
+        } else {
+            qWarning() << "Icon not found:" << name;
+        }
+    }
+    return icon;
 }
 
 void BrowserWindow::setupUI()
@@ -226,9 +248,25 @@ void BrowserWindow::setupUI()
     m_tabWidget = new QTabWidget(this);
     m_tabWidget->setTabsClosable(true);
     m_tabWidget->setMovable(true);
+
+    // Обновлённый стиль для кнопки закрытия вкладки – теперь точно будет видна
+QString styleSheet = QString(
+    "QTabBar::close-button {"
+    "  image: url(:/icons/icons/stop.png);"   // добавить дополнительную папку icons/
+    "  subcontrol-position: right;"
+    "  subcontrol-origin: padding;"
+    "  width: 16px;"
+    "  height: 16px;"
+    "}"
+);
+    m_tabWidget->tabBar()->setStyleSheet(styleSheet);
+
     connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &BrowserWindow::closeTab);
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &BrowserWindow::onCurrentTabChanged);
     setCentralWidget(m_tabWidget);
+
+    setupTabContextMenu();
+    m_tabWidget->tabBar()->installEventFilter(this);
 }
 
 void BrowserWindow::createToolbar()
@@ -238,31 +276,27 @@ void BrowserWindow::createToolbar()
     toolbar->setIconSize(QSize(24, 24));
 
     m_backButton = new QToolButton;
-    m_backButton->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
+    m_backButton->setIcon(loadIcon("back.png"));
     m_backButton->setToolTip("Назад (Alt+Left)");
 
     m_forwardButton = new QToolButton;
-    m_forwardButton->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    m_forwardButton->setIcon(loadIcon("forward.png"));
     m_forwardButton->setToolTip("Вперёд (Alt+Right)");
 
     m_reloadButton = new QToolButton;
-    m_reloadButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    m_reloadButton->setIcon(loadIcon("reload.png"));
     m_reloadButton->setToolTip("Перезагрузить (Ctrl+R / F5)");
 
-    m_stopButton = new QToolButton;
-    m_stopButton->setIcon(style()->standardIcon(QStyle::SP_BrowserStop));
-    m_stopButton->setToolTip("Остановить загрузку");
-
-    m_homeButton = new QToolButton;
-    m_homeButton->setText("🏠");
-    m_homeButton->setToolTip("Домашняя страница");
-
     m_addTabButton = new QToolButton;
-    m_addTabButton->setText("+");
+    m_addTabButton->setIcon(loadIcon("add.png"));
     m_addTabButton->setToolTip("Новая вкладка (Ctrl+T)");
 
+    m_homeButton = new QToolButton;
+    m_homeButton->setIcon(loadIcon("home.png"));
+    m_homeButton->setToolTip("Домашняя страница");
+
     m_settingsButton = new QToolButton;
-    m_settingsButton->setText("⚙");
+    m_settingsButton->setIcon(loadIcon("settings.png"));
     m_settingsButton->setToolTip("Настройки");
 
     m_urlBar = new QLineEdit();
@@ -273,19 +307,17 @@ void BrowserWindow::createToolbar()
     toolbar->addWidget(m_backButton);
     toolbar->addWidget(m_forwardButton);
     toolbar->addWidget(m_reloadButton);
-    toolbar->addWidget(m_stopButton);
+    toolbar->addWidget(m_addTabButton);
     toolbar->addWidget(m_homeButton);
     toolbar->addSeparator();
     toolbar->addWidget(m_urlBar);
-    toolbar->addWidget(m_addTabButton);
     toolbar->addWidget(m_settingsButton);
 
     connect(m_backButton, &QToolButton::clicked, this, &BrowserWindow::goBack);
     connect(m_forwardButton, &QToolButton::clicked, this, &BrowserWindow::goForward);
     connect(m_reloadButton, &QToolButton::clicked, this, &BrowserWindow::reload);
-    connect(m_stopButton, &QToolButton::clicked, this, &BrowserWindow::stop);
-    connect(m_homeButton, &QToolButton::clicked, this, &BrowserWindow::home);
     connect(m_addTabButton, &QToolButton::clicked, this, [this]() { addNewTab(QUrl(m_homePage)); });
+    connect(m_homeButton, &QToolButton::clicked, this, &BrowserWindow::home);
     connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::openSettings);
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
 }
@@ -387,6 +419,7 @@ void BrowserWindow::reload()
 
 void BrowserWindow::stop()
 {
+    // Кнопка stop удалена, но метод оставлен на случай использования извне
     if (BrowserTab *tab = currentTab())
         tab->webView()->stop();
 }
@@ -397,6 +430,7 @@ void BrowserWindow::home()
         tab->navigateToUrl(QUrl(m_homePage));
 }
 
+// ---- Обработка клавиш ----
 void BrowserWindow::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_F11) {
@@ -408,9 +442,117 @@ void BrowserWindow::keyPressEvent(QKeyEvent *event)
         event->accept();
         return;
     }
+
+    if (event->modifiers() & Qt::ControlModifier) {
+        if (event->key() == Qt::Key_T) {
+            addNewTab(QUrl(m_homePage));
+            event->accept();
+            return;
+        } else if (event->key() == Qt::Key_W) {
+            closeCurrentTab();
+            event->accept();
+            return;
+        } else if (event->key() == Qt::Key_Tab) {
+            int count = m_tabWidget->count();
+            if (count > 1) {
+                int next = (m_tabWidget->currentIndex() + 1) % count;
+                m_tabWidget->setCurrentIndex(next);
+            }
+            event->accept();
+            return;
+        }
+    }
+    if ((event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) == (Qt::ControlModifier | Qt::ShiftModifier)) {
+        if (event->key() == Qt::Key_Tab) {
+            int count = m_tabWidget->count();
+            if (count > 1) {
+                int prev = (m_tabWidget->currentIndex() - 1 + count) % count;
+                m_tabWidget->setCurrentIndex(prev);
+            }
+            event->accept();
+            return;
+        }
+    }
     QMainWindow::keyPressEvent(event);
 }
 
+// ---- Закрытие по средней кнопке ----
+bool BrowserWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_tabWidget->tabBar() && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+        if (mouseEvent->button() == Qt::MiddleButton) {
+            int index = m_tabWidget->tabBar()->tabAt(mouseEvent->pos());
+            if (index != -1) {
+                closeTab(index);
+                return true;
+            }
+        }
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
+
+// ---- Контекстное меню вкладок ----
+void BrowserWindow::setupTabContextMenu()
+{
+    m_tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tabWidget->tabBar(), &QTabBar::customContextMenuRequested,
+            [this](const QPoint &pos) {
+                int index = m_tabWidget->tabBar()->tabAt(pos);
+                if (index == -1) return;
+                m_tabWidget->setCurrentIndex(index);
+
+                QMenu menu;
+                QAction *closeAct = menu.addAction("Закрыть вкладку");
+                QAction *closeOthersAct = menu.addAction("Закрыть другие вкладки");
+                QAction *reloadAct = menu.addAction("Перезагрузить");
+                QAction *duplicateAct = menu.addAction("Дублировать вкладку");
+
+                QAction *selected = menu.exec(m_tabWidget->tabBar()->mapToGlobal(pos));
+                if (selected == closeAct) {
+                    closeCurrentTab();
+                } else if (selected == closeOthersAct) {
+                    closeOtherTabs();
+                } else if (selected == reloadAct) {
+                    reloadCurrentTab();
+                } else if (selected == duplicateAct) {
+                    duplicateCurrentTab();
+                }
+            });
+}
+
+void BrowserWindow::closeCurrentTab()
+{
+    int index = m_tabWidget->currentIndex();
+    if (index != -1)
+        closeTab(index);
+}
+
+void BrowserWindow::closeOtherTabs()
+{
+    int current = m_tabWidget->currentIndex();
+    if (current == -1) return;
+    for (int i = m_tabWidget->count() - 1; i >= 0; --i) {
+        if (i != current)
+            closeTab(i);
+    }
+}
+
+void BrowserWindow::reloadCurrentTab()
+{
+    reload();
+}
+
+void BrowserWindow::duplicateCurrentTab()
+{
+    BrowserTab *tab = currentTab();
+    if (!tab) return;
+    QUrl url = tab->currentUrl();
+    if (url.isValid() && !url.isEmpty())
+        addNewTab(url);
+}
+
+// ---- Drag & Drop ----
 void BrowserWindow::dragEnterEvent(QDragEnterEvent *event)
 {
     if (event->mimeData()->hasUrls())
@@ -431,9 +573,10 @@ void BrowserWindow::dropEvent(QDropEvent *event)
     event->acceptProposedAction();
 }
 
+// ---- Настройки ----
 void BrowserWindow::loadSettings()
 {
-    QSettings settings; // без параметров
+    QSettings settings;
     m_homePage = settings.value("homePage", "https://www.google.com").toString();
     m_searchEngine = settings.value("searchEngine", "https://www.google.com/search?q=").toString();
     m_javaScriptEnabled = settings.value("javaScriptEnabled", true).toBool();
@@ -447,7 +590,7 @@ void BrowserWindow::loadSettings()
 
 void BrowserWindow::saveSettings()
 {
-    QSettings settings; // без параметров
+    QSettings settings;
     settings.setValue("homePage", m_homePage);
     settings.setValue("searchEngine", m_searchEngine);
     settings.setValue("javaScriptEnabled", m_javaScriptEnabled);
@@ -490,7 +633,7 @@ void BrowserWindow::openSettings()
     dialog.setZoom(m_zoom);
     dialog.setWindowOpacity(windowOpacity());
 
-    QSettings settings; // без параметров
+    QSettings settings;
     dialog.setTheme(settings.value("theme", 0).toInt());
 
     if (dialog.exec() == QDialog::Accepted) {
