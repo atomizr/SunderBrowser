@@ -4,13 +4,14 @@
 #include <QMainWindow>
 #include <QLineEdit>
 #include <QWebEngineView>
-#include <QPushButton>
+#include <QToolButton>
 #include <QProgressBar>
 #include <QTabWidget>
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QUrl>
 
 class BrowserTab : public QWidget
 {
@@ -31,6 +32,7 @@ signals:
 
 private slots:
     void onDownloadRequested(QWebEngineDownloadRequest *download);
+    void onLoadFinished(bool ok);
 
 private:
     QWebEngineView *m_webView;
@@ -61,27 +63,30 @@ private slots:
     void stop();
     void home();
     void openSettings();
+    void applyTheme(int themeIndex);
 
 private:
     QTabWidget *m_tabWidget;
     QLineEdit *m_urlBar;
-    QPushButton *m_backButton;
-    QPushButton *m_forwardButton;
-    QPushButton *m_reloadButton;
-    QPushButton *m_stopButton;
-    QPushButton *m_homeButton;
-    QPushButton *m_addTabButton;
-    QPushButton *m_settingsButton;
+    QToolButton *m_backButton;
+    QToolButton *m_forwardButton;
+    QToolButton *m_reloadButton;
+    QToolButton *m_stopButton;
+    QToolButton *m_homeButton;
+    QToolButton *m_addTabButton;
+    QToolButton *m_settingsButton;
 
     QString m_homePage;
     QString m_searchEngine;
     bool m_javaScriptEnabled;
+    double m_zoom;
 
     void setupUI();
     void createToolbar();
     void loadSettings();
     void saveSettings();
     BrowserTab* currentTab() const;
+    void applySettingsToTab(BrowserTab *tab);
 };
 
 #endif // BROWSERWINDOW_H
