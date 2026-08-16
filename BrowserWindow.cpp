@@ -24,8 +24,9 @@
 #include <QFileInfo>
 #include <QStyle>
 #include <QStatusBar>
-#include <QFile>          // добавлено для записи файла
-#include <QTextStream>    // добавлено для записи
+#include <QFile>
+#include <QTextStream>
+#include <QKeyEvent>
 
 // -------------------- BrowserTab --------------------
 BrowserTab::BrowserTab(QWidget *parent) : QWidget(parent)
@@ -79,7 +80,6 @@ void BrowserTab::showContextMenu(const QPoint &pos)
     QMenu *menu = new QMenu;
     menu->setAttribute(Qt::WA_DeleteOnClose);
 
-    // Просмотр исходного кода
     QAction *viewSource = menu->addAction("Просмотреть исходный код");
     connect(viewSource, &QAction::triggered, [this]() {
         QUrl currentUrl = m_webView->url();
@@ -95,7 +95,6 @@ void BrowserTab::showContextMenu(const QPoint &pos)
         }
     });
 
-    // Сохранить исходный код на диск
     QAction *saveSource = menu->addAction("Сохранить исходный код...");
     connect(saveSource, &QAction::triggered, [this]() {
         savePageSource();
@@ -104,13 +103,11 @@ void BrowserTab::showContextMenu(const QPoint &pos)
     menu->popup(m_webView->mapToGlobal(pos));
 }
 
-// Новый метод для сохранения исходного кода
 void BrowserTab::savePageSource()
 {
     QWebEnginePage *page = m_webView->page();
     if (!page) return;
 
-    // Асинхронно получаем HTML-код страницы
     page->toHtml([this](const QString &html) {
         if (html.isEmpty()) {
             if (QMainWindow *mw = qobject_cast<QMainWindow*>(window())) {
@@ -121,12 +118,11 @@ void BrowserTab::savePageSource()
             return;
         }
 
-        // Предлагаем имя файла (на основе заголовка или URL)
         QString defaultName = "page.html";
         QString title = m_webView->title();
         if (!title.isEmpty()) {
             defaultName = title + ".html";
-            defaultName.replace(QRegularExpression("[<>:\"/\\|?*]"), "_"); // заменяем недопустимые символы
+            defaultName.replace(QRegularExpression("[<>:\"/\\|?*]"), "_");
         }
 
         QString savePath = QFileDialog::getSaveFileName(
@@ -194,7 +190,6 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     : QMainWindow(parent), m_zoom(1.0), m_javaScriptEnabled(true)
 {
     setAcceptDrops(true);
-
     setWindowOpacity(1.0);
 
     QScreen *screen = QGuiApplication::primaryScreen();
@@ -215,8 +210,8 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     loadSettings();
     addNewTab(QUrl(m_homePage));
 
-    QSettings appSettings("SunderBrowser", "SunderBrowser");
-    int theme = appSettings.value("theme", 0).toInt();
+    QSettings settings; // теперь без параметров
+    int theme = settings.value("theme", 0).toInt();
     applyTheme(theme);
 }
 
@@ -244,22 +239,36 @@ void BrowserWindow::createToolbar()
 
     m_backButton = new QToolButton;
     m_backButton->setIcon(style()->standardIcon(QStyle::SP_ArrowBack));
+    m_backButton->setToolTip("Назад (Alt+Left)");
+
     m_forwardButton = new QToolButton;
     m_forwardButton->setIcon(style()->standardIcon(QStyle::SP_ArrowForward));
+    m_forwardButton->setToolTip("Вперёд (Alt+Right)");
+
     m_reloadButton = new QToolButton;
     m_reloadButton->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    m_reloadButton->setToolTip("Перезагрузить (Ctrl+R / F5)");
+
     m_stopButton = new QToolButton;
     m_stopButton->setIcon(style()->standardIcon(QStyle::SP_BrowserStop));
+    m_stopButton->setToolTip("Остановить загрузку");
+
     m_homeButton = new QToolButton;
     m_homeButton->setText("🏠");
+    m_homeButton->setToolTip("Домашняя страница");
+
     m_addTabButton = new QToolButton;
     m_addTabButton->setText("+");
+    m_addTabButton->setToolTip("Новая вкладка (Ctrl+T)");
+
     m_settingsButton = new QToolButton;
     m_settingsButton->setText("⚙");
+    m_settingsButton->setToolTip("Настройки");
 
     m_urlBar = new QLineEdit();
     m_urlBar->setPlaceholderText("Введите URL или поисковый запрос...");
     m_urlBar->setMinimumWidth(400);
+    m_urlBar->setToolTip("Адресная строка (Ctrl+L / Alt+D)");
 
     toolbar->addWidget(m_backButton);
     toolbar->addWidget(m_forwardButton);
@@ -388,6 +397,20 @@ void BrowserWindow::home()
         tab->navigateToUrl(QUrl(m_homePage));
 }
 
+void BrowserWindow::keyPressEvent(QKeyEvent *event)
+{
+    if (event->key() == Qt::Key_F11) {
+        if (isFullScreen())
+            showNormal();
+        else
+            showFullScreen();
+        statusBar()->showMessage(isFullScreen() ? "Полноэкранный режим включён (F11)" : "Полноэкранный режим выключен", 2000);
+        event->accept();
+        return;
+    }
+    QMainWindow::keyPressEvent(event);
+}
+
 void BrowserWindow::dragEnterEvent(QDragEnterEvent *event)
 {
     if (event->mimeData()->hasUrls())
@@ -410,7 +433,7 @@ void BrowserWindow::dropEvent(QDropEvent *event)
 
 void BrowserWindow::loadSettings()
 {
-    QSettings settings("SunderBrowser", "SunderBrowser");
+    QSettings settings; // без параметров
     m_homePage = settings.value("homePage", "https://www.google.com").toString();
     m_searchEngine = settings.value("searchEngine", "https://www.google.com/search?q=").toString();
     m_javaScriptEnabled = settings.value("javaScriptEnabled", true).toBool();
@@ -424,7 +447,7 @@ void BrowserWindow::loadSettings()
 
 void BrowserWindow::saveSettings()
 {
-    QSettings settings("SunderBrowser", "SunderBrowser");
+    QSettings settings; // без параметров
     settings.setValue("homePage", m_homePage);
     settings.setValue("searchEngine", m_searchEngine);
     settings.setValue("javaScriptEnabled", m_javaScriptEnabled);
@@ -467,8 +490,8 @@ void BrowserWindow::openSettings()
     dialog.setZoom(m_zoom);
     dialog.setWindowOpacity(windowOpacity());
 
-    QSettings appSettings("SunderBrowser", "SunderBrowser");
-    dialog.setTheme(appSettings.value("theme", 0).toInt());
+    QSettings settings; // без параметров
+    dialog.setTheme(settings.value("theme", 0).toInt());
 
     if (dialog.exec() == QDialog::Accepted) {
         m_homePage = dialog.getHomePage();
@@ -485,7 +508,7 @@ void BrowserWindow::openSettings()
             }
         }
         window()->setWindowOpacity(opacity);
-        appSettings.setValue("theme", theme);
+        settings.setValue("theme", theme);
 
         applyTheme(theme);
         saveSettings();
