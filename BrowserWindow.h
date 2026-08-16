@@ -12,7 +12,9 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QUrl>
-#include <QKeyEvent>   // добавлено
+#include <QKeyEvent>
+#include <QIcon>
+#include <QDir>
 
 class BrowserTab : public QWidget
 {
@@ -53,7 +55,8 @@ public:
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
-    void keyPressEvent(QKeyEvent *event) override;   // добавлено
+    void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private slots:
     void addNewTab(const QUrl &url = QUrl());
@@ -67,6 +70,11 @@ private slots:
     void home();
     void openSettings();
     void applyTheme(int themeIndex);
+
+    void closeCurrentTab();
+    void closeOtherTabs();
+    void reloadCurrentTab();
+    void duplicateCurrentTab();
 
 private:
     QTabWidget *m_tabWidget;
@@ -90,6 +98,8 @@ private:
     void saveSettings();
     BrowserTab* currentTab() const;
     void applySettingsToTab(BrowserTab *tab);
+    void setupTabContextMenu();
+    QIcon loadIcon(const QString &name);
 };
 
 #endif // BROWSERWINDOW_H
