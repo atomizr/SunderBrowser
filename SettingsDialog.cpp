@@ -3,6 +3,7 @@
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QHBoxLayout>
 
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 {
