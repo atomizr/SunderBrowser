@@ -117,10 +117,10 @@ BrowserWindow::BrowserWindow(QWidget *parent)
 {
     setAcceptDrops(true);
 
-    // ---- Принудительная непрозрачность ----
+    // Принудительная непрозрачность
     setWindowOpacity(1.0);
 
-    // ---- Адаптивный размер ----
+    // Адаптивный размер
     QScreen *screen = QGuiApplication::primaryScreen();
     if (screen) {
         QRect available = screen->availableGeometry();
@@ -134,7 +134,6 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     } else {
         resize(1024, 768);
     }
-    // ------------------------------------------------
 
     setupUI();
     loadSettings();
@@ -196,6 +195,7 @@ void BrowserWindow::createToolbar()
     toolbar->addWidget(m_addTabButton);
     toolbar->addWidget(m_settingsButton);
 
+    // Все кнопки всегда активны
     connect(m_backButton, &QToolButton::clicked, this, &BrowserWindow::goBack);
     connect(m_forwardButton, &QToolButton::clicked, this, &BrowserWindow::goForward);
     connect(m_reloadButton, &QToolButton::clicked, this, &BrowserWindow::reload);
@@ -235,18 +235,9 @@ void BrowserWindow::addNewTab(const QUrl &url)
         if (m_tabWidget->currentWidget() == tab)
             m_urlBar->setText(url.toString());
     });
-    connect(tab, &BrowserTab::loadStarted, [this, tab]() {
-        if (m_tabWidget->currentWidget() == tab) {
-            m_reloadButton->setEnabled(false);
-            m_stopButton->setEnabled(true);
-        }
-    });
-    connect(tab, &BrowserTab::loadFinished, [this, tab](bool ok) {
-        if (m_tabWidget->currentWidget() == tab) {
-            m_reloadButton->setEnabled(true);
-            m_stopButton->setEnabled(false);
-        }
-    });
+    // Состояние кнопок не управляется
+    connect(tab, &BrowserTab::loadStarted, [this, tab]() {});
+    connect(tab, &BrowserTab::loadFinished, [this, tab](bool ok) {});
 
     if (!url.isEmpty())
         tab->navigateToUrl(url);
@@ -269,9 +260,6 @@ void BrowserWindow::onCurrentTabChanged(int index)
 
     m_urlBar->setText(tab->currentUrl().toString());
     setWindowTitle(tab->webView()->title() + " - Simple Browser");
-
-    m_backButton->setEnabled(tab->webView()->history()->canGoBack());
-    m_forwardButton->setEnabled(tab->webView()->history()->canGoForward());
 }
 
 void BrowserWindow::navigateToUrl()
@@ -292,24 +280,34 @@ void BrowserWindow::navigateToUrl()
 
 void BrowserWindow::goBack()
 {
-    if (BrowserTab *tab = currentTab())
+    BrowserTab *tab = currentTab();
+    if (tab && tab->webView()->history()->canGoBack())
         tab->webView()->back();
 }
+
 void BrowserWindow::goForward()
 {
-    if (BrowserTab *tab = currentTab())
+    BrowserTab *tab = currentTab();
+    if (tab && tab->webView()->history()->canGoForward())
         tab->webView()->forward();
 }
+
 void BrowserWindow::reload()
 {
-    if (BrowserTab *tab = currentTab())
-        tab->webView()->reload();
+    BrowserTab *tab = currentTab();
+    if (!tab) return;
+    QWebEnginePage *page = tab->webView()->page();
+    if (page && page->isLoading())
+        tab->webView()->stop();  // Исправлено: stop() у QWebEngineView
+    tab->webView()->reload();
 }
+
 void BrowserWindow::stop()
 {
     if (BrowserTab *tab = currentTab())
         tab->webView()->stop();
 }
+
 void BrowserWindow::home()
 {
     if (BrowserTab *tab = currentTab())
@@ -346,7 +344,7 @@ void BrowserWindow::loadSettings()
 
     double opacity = settings.value("opacity", 1.0).toDouble();
     if (opacity <= 0.0 || opacity > 1.0)
-        opacity = 1.0;  // защита от невалидного значения (0 делает окно невидимым)
+        opacity = 1.0;
     window()->setWindowOpacity(opacity);
 }
 
