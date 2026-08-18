@@ -114,6 +114,9 @@ void BrowserController::closeTab(int index)
 {
     if (index < 0 || index >= m_tabs.size()) return;
     BrowserTab *tab = m_tabs.takeAt(index);
+    // FIXED: Останавливаем загрузку перед удалением
+    if (tab->webView())
+        tab->webView()->stop();
     m_mainWindow->removeTab(index);
     delete tab;
     emit tabCountChanged(m_tabs.size());
@@ -233,6 +236,8 @@ void BrowserController::setupTabSignals(BrowserTab *tab)
     connect(tab, &BrowserTab::loadFinished, this, [this, tab](bool ok) {
         onTabLoadFinished(tab, ok);
     });
+    // FIXED: подключаем сигнал статусных сообщений от вкладки
+    connect(tab, &BrowserTab::statusMessage, this, &BrowserController::showStatusMessage);
 }
 
 void BrowserController::onTabTitleChanged(BrowserTab *tab, const QString &title)
@@ -283,4 +288,11 @@ void BrowserController::updateCurrentTabUI()
     if (!tab) return;
     onTabUrlChanged(tab, tab->currentUrl());
     onTabTitleChanged(tab, tab->webView()->title());
+}
+
+// FIXED: реализация clearTabs
+void BrowserController::clearTabs()
+{
+    // Просто очищаем список, не удаляя объекты – они уже удалены вместе с MainWindow
+    m_tabs.clear();
 }
