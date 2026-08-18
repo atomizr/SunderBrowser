@@ -50,6 +50,8 @@ MainWindow::MainWindow(BrowserController &controller, QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    // FIXED: очищаем список вкладок в контроллере, чтобы избежать висячих указателей
+    m_controller.clearTabs();
 }
 
 void MainWindow::setupUI()
@@ -125,8 +127,6 @@ void MainWindow::createToolbar()
 
 void MainWindow::setupTabBarStyle()
 {
-    // Используем стандартную кнопку закрытия (без кастомной иконки)
-    // или можно убрать стиль совсем
     m_tabWidget->tabBar()->setStyleSheet("");
 }
 
@@ -269,8 +269,6 @@ void MainWindow::loadStartPage(BrowserTab *tab)
 
     QString backgroundStyle = BackgroundService::getRandomBackgroundStyle();
 
-    // ВНИМАНИЕ: в HTML есть два вхождения %1 (в CSS и в style="%1").
-    // Поэтому вызываем .arg() дважды.
     QString html = QString(R"(
 <!DOCTYPE html>
 <html>
@@ -436,7 +434,7 @@ void MainWindow::loadStartPage(BrowserTab *tab)
     </div>
 </body>
 </html>
-)").arg(backgroundStyle).arg(backgroundStyle);   // <--- ДВАЖДЫ, так как в HTML два %1
+)").arg(backgroundStyle).arg(backgroundStyle);
 
     tab->webView()->setHtml(html, QUrl("about:blank"));
 }
@@ -461,10 +459,10 @@ void MainWindow::applyTheme(int themeIndex)
         pal.setColor(QPalette::HighlightedText, Qt::black);
         qApp->setPalette(pal);
         break;
-    case 2: // Системная
-        qApp->setPalette(QApplication::style()->standardPalette());
+    case 2: // Системная – сброс к системной палитре
+        qApp->setPalette(QPalette());  // FIXED: сброс к системной
         break;
-    default:
+    default: // Светлая
         qApp->setPalette(QApplication::style()->standardPalette());
         break;
     }
