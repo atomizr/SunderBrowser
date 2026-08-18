@@ -23,7 +23,6 @@ public:
     double zoom() const;
     double windowOpacity() const;
     int theme() const;
-
     // Сеттеры настроек (изменяют модель и применяют)
     void setHomePage(const QString &page);
     void setSearchEngine(const QString &engine);
@@ -31,7 +30,6 @@ public:
     void setZoom(double zoom);
     void setWindowOpacity(double opacity);
     void setTheme(int theme);
-
     // Действия
     void addTab(const QUrl &url = QUrl());
     void closeTab(int index);
@@ -39,30 +37,25 @@ public:
     void closeOtherTabs();
     void duplicateCurrentTab();
     void switchTab(int index);
-
     void navigateToUrl(const QString &input);
     void goBack();
     void goForward();
     void reload();
     void stop();
     void home();
-
     void applySettingsToTab(BrowserTab *tab);
     void applyTheme(int themeIndex);
-
     // Управление вкладками
     BrowserTab* currentTab() const;
     int currentIndex() const;
     int tabCount() const;
-
     // Регистрация главного окна для обратной связи (обновление UI)
     void setMainWindow(MainWindow *window);
-
     // Обновление статусной строки
     void showStatusMessage(const QString &message, int timeout = 2000);
-
     // Обновление UI текущей вкладки (адрес, заголовок) – теперь публичный
     void updateCurrentTabUI();
+    void clearTabs();
 
 signals:
     void urlChanged(const QUrl &url);
