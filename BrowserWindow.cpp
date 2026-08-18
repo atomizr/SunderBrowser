@@ -1,5 +1,6 @@
 #include "BrowserWindow.h"
 #include "SettingsDialog.h"
+#include <ctime>
 #include <QToolBar>
 #include <QMessageBox>
 #include <QUrl>
@@ -31,6 +32,8 @@
 #include <QIcon>
 #include <QDir>
 #include <QCoreApplication>
+#include <QRegularExpression>
+#include <QDateTime>
 
 // -------------------- BrowserTab --------------------
 BrowserTab::BrowserTab(QWidget *parent) : QWidget(parent)
@@ -193,6 +196,9 @@ void BrowserTab::onLoadFinished(bool ok)
 BrowserWindow::BrowserWindow(QWidget *parent)
     : QMainWindow(parent), m_zoom(1.0), m_javaScriptEnabled(true)
 {
+    // Инициализация генератора случайных чисел
+    srand(static_cast<unsigned>(time(nullptr)));
+
     setAcceptDrops(true);
     setWindowOpacity(1.0);
 
@@ -212,7 +218,7 @@ BrowserWindow::BrowserWindow(QWidget *parent)
 
     setupUI();
     loadSettings();
-    addNewTab(QUrl(m_homePage));
+    addNewTab();
 
     QSettings settings;
     int theme = settings.value("theme", 0).toInt();
@@ -249,16 +255,19 @@ void BrowserWindow::setupUI()
     m_tabWidget->setTabsClosable(true);
     m_tabWidget->setMovable(true);
 
-    // Обновлённый стиль для кнопки закрытия вкладки – теперь точно будет видна
-QString styleSheet = QString(
-    "QTabBar::close-button {"
-    "  image: url(:/icons/icons/stop.png);"   // добавить дополнительную папку icons/
-    "  subcontrol-position: right;"
-    "  subcontrol-origin: padding;"
-    "  width: 16px;"
-    "  height: 16px;"
-    "}"
-);
+    // Обновлённый стиль для кнопки закрытия вкладки
+    QString styleSheet = QString(
+        "QTabBar::close-button {"
+        "  image: url(:/icons/stop.png);"
+        "  subcontrol-position: right;"
+        "  subcontrol-origin: padding;"
+        "  width: 16px;"
+        "  height: 16px;"
+        "}"
+        "QTabBar::close-button:hover {"
+        "  image: url(:/icons/stop.png);"
+        "}"
+    );
     m_tabWidget->tabBar()->setStyleSheet(styleSheet);
 
     connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, &BrowserWindow::closeTab);
@@ -316,7 +325,7 @@ void BrowserWindow::createToolbar()
     connect(m_backButton, &QToolButton::clicked, this, &BrowserWindow::goBack);
     connect(m_forwardButton, &QToolButton::clicked, this, &BrowserWindow::goForward);
     connect(m_reloadButton, &QToolButton::clicked, this, &BrowserWindow::reload);
-    connect(m_addTabButton, &QToolButton::clicked, this, [this]() { addNewTab(QUrl(m_homePage)); });
+    connect(m_addTabButton, &QToolButton::clicked, this, [this]() { addNewTab(); }); // без параметров
     connect(m_homeButton, &QToolButton::clicked, this, &BrowserWindow::home);
     connect(m_settingsButton, &QToolButton::clicked, this, &BrowserWindow::openSettings);
     connect(m_urlBar, &QLineEdit::returnPressed, this, &BrowserWindow::navigateToUrl);
@@ -332,6 +341,248 @@ void BrowserWindow::applySettingsToTab(BrowserTab *tab)
     if (!tab) return;
     tab->webView()->settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, m_javaScriptEnabled);
     tab->webView()->setZoomFactor(m_zoom);
+}
+
+void BrowserWindow::loadStartPage(BrowserTab* tab)
+{
+    if (!tab) return;
+
+    // Формируем путь к папке с фонами
+    QString backgroundsPath = QCoreApplication::applicationDirPath() + "/assets/backgrounds/";
+    
+    // Создаём список возможных файлов (image_1.jpg ... image_10.jpg)
+    QStringList imageFiles;
+    for (int i = 1; i <= 10; ++i) {
+        imageFiles << QString("image_%1.jpg").arg(i);
+    }
+
+    // Выбираем случайное изображение
+    QString selectedImage;
+    if (!imageFiles.isEmpty()) {
+        int randomIndex = rand() % imageFiles.size();
+        selectedImage = imageFiles[randomIndex];
+    }
+
+    // Строим фон
+    QString backgroundStyle;
+    if (!selectedImage.isEmpty()) {
+        QString fullPath = backgroundsPath + selectedImage;
+        QFile imageFile(fullPath);
+        if (imageFile.open(QIODevice::ReadOnly)) {
+            QByteArray imageData = imageFile.readAll();
+            QString base64 = QString::fromLatin1(imageData.toBase64());
+            backgroundStyle = QString(
+                "background-image: url('data:image/jpeg;base64,%1'); "
+                "background-size: cover; "
+                "background-position: center; "
+                "background-repeat: no-repeat;"
+            ).arg(base64);
+        } else {
+            backgroundStyle = "background: radial-gradient(120% 90% at 85% -10%, rgba(72,28,132,0.75) 0%, transparent 55%), "
+                              "radial-gradient(130% 130% at 12% -5%, #170b31 0%, #070312 62%); "
+                              "background-size: cover;";
+        }
+    } else {
+        backgroundStyle = "background: radial-gradient(120% 90% at 85% -10%, rgba(72,28,132,0.75) 0%, transparent 55%), "
+                          "radial-gradient(130% 130% at 12% -5%, #170b31 0%, #070312 62%); "
+                          "background-size: cover;";
+    }
+
+    // HTML с бежевой карточкой, логотипом и поиском, с размытым фоном
+    QString html = QString(R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Новая вкладка</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Segoe UI", Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        /* Размытый фоновый слой */
+        .bg-blur {
+            position: fixed;
+            top: -20px;
+            left: -20px;
+            right: -20px;
+            bottom: -20px;
+            z-index: 0;
+            %1
+            filter: blur(8px);
+            transform: scale(1.05);
+        }
+        /* Затемнение поверх фона для улучшения читаемости */
+        .bg-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1;
+            background: rgba(0,0,0,0.15);
+        }
+        .search-container {
+            position: relative;
+            z-index: 2;
+            background: rgba(245, 240, 235, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 40px 50px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            text-align: center;
+            width: 540px;
+            max-width: 92%;
+            border: 1px solid rgba(200, 180, 160, 0.2);
+        }
+        h1 {
+            font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+            font-weight: 300;
+            font-size: 2.8em;
+            letter-spacing: 0.3em;
+            color: #2C1810;
+            margin-bottom: 4px;
+            text-shadow: 0 0 30px rgba(180, 150, 100, 0.15);
+        }
+        .sub {
+            font-size: 0.7em;
+            letter-spacing: 0.4em;
+            color: #6E5C3E;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .sub::before, .sub::after {
+            content: "";
+            height: 1px;
+            width: 40px;
+            background: linear-gradient(90deg, transparent, #B8A088);
+        }
+        .sub::after {
+            background: linear-gradient(90deg, #B8A088, transparent);
+        }
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: white;
+            border-radius: 50px;
+            padding: 4px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid rgba(200, 180, 160, 0.3);
+            transition: all 0.3s ease;
+        }
+        .search-box:focus-within {
+            box-shadow: 0 4px 30px rgba(180, 150, 100, 0.2);
+            border-color: #C8A87A;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 14px 20px;
+            font-size: 16px;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: #2C1810;
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+        input[type="text"]::placeholder {
+            color: #A09080;
+        }
+        button {
+            padding: 12px 28px;
+            font-size: 16px;
+            background: linear-gradient(135deg, #DDB880, #C8A87A);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            margin: 4px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(200, 168, 122, 0.4);
+        }
+        button:active {
+            transform: translateY(0px);
+        }
+        .hint {
+            margin-top: 16px;
+            font-size: 0.75em;
+            color: #8A7A6A;
+            letter-spacing: 0.05em;
+        }
+        .hint kbd {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(200, 180, 160, 0.2);
+            border: 1px solid rgba(200, 180, 160, 0.3);
+            font-size: 0.85em;
+            font-family: "Consolas", monospace;
+            color: #5C4C3C;
+            margin: 0 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-blur" style="%1"></div>
+    <div class="bg-overlay"></div>
+    <div class="search-container">
+        <h1>SUNDER</h1>
+        <div class="sub">THE FUTURE OF BROWSING</div>
+        <form action="https://www.google.com/search" method="get" class="search-box">
+            <input type="text" name="q" placeholder="Поиск или введите адрес..." autofocus>
+            <button type="submit">Поиск</button>
+        </form>
+        <div class="hint">
+            Нажмите <kbd>Ctrl+L</kbd> или <kbd>Alt+D</kbd> для перехода в адресную строку
+        </div>
+    </div>
+</body>
+</html>
+)").arg(backgroundStyle, backgroundStyle);
+
+    tab->webView()->setHtml(html, QUrl("about:blank"));
+}
+
+// ---- Перегрузки addNewTab ----
+void BrowserWindow::addNewTab()
+{
+    BrowserTab *tab = new BrowserTab(this);
+    int index = m_tabWidget->addTab(tab, "Новая вкладка");
+    m_tabWidget->setCurrentIndex(index);
+
+    applySettingsToTab(tab);
+
+    connect(tab, &BrowserTab::titleChanged, [this, tab, index](const QString &title) {
+        m_tabWidget->setTabText(index, title);
+        if (m_tabWidget->currentWidget() == tab)
+            setWindowTitle(title + " - Sunder Browser");
+    });
+    connect(tab, &BrowserTab::urlChanged, [this, tab](const QUrl &url) {
+        if (m_tabWidget->currentWidget() == tab)
+            m_urlBar->setText(url.toString());
+    });
+    connect(tab, &BrowserTab::loadStarted, [this, tab]() {});
+    connect(tab, &BrowserTab::loadFinished, [this, tab](bool ok) {});
+
+    loadStartPage(tab);
 }
 
 void BrowserWindow::addNewTab(const QUrl &url)
@@ -365,7 +616,7 @@ void BrowserWindow::closeTab(int index)
     delete tab;
 
     if (m_tabWidget->count() == 0)
-        addNewTab(QUrl(m_homePage));
+        addNewTab();   // стартовая страница
 }
 
 void BrowserWindow::onCurrentTabChanged(int index)
@@ -419,7 +670,6 @@ void BrowserWindow::reload()
 
 void BrowserWindow::stop()
 {
-    // Кнопка stop удалена, но метод оставлен на случай использования извне
     if (BrowserTab *tab = currentTab())
         tab->webView()->stop();
 }
@@ -445,7 +695,7 @@ void BrowserWindow::keyPressEvent(QKeyEvent *event)
 
     if (event->modifiers() & Qt::ControlModifier) {
         if (event->key() == Qt::Key_T) {
-            addNewTab(QUrl(m_homePage));
+            addNewTab();   // стартовая страница
             event->accept();
             return;
         } else if (event->key() == Qt::Key_W) {
@@ -549,7 +799,7 @@ void BrowserWindow::duplicateCurrentTab()
     if (!tab) return;
     QUrl url = tab->currentUrl();
     if (url.isValid() && !url.isEmpty())
-        addNewTab(url);
+        addNewTab(url);   // с URL
 }
 
 // ---- Drag & Drop ----
