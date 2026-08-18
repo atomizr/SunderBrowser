@@ -2,6 +2,7 @@
 #include "ui/MainWindow.h"
 #include "controllers/BrowserController.h"
 #include "models/SettingsModel.h"
+#include "utils/Logger.h"
 #include <QFile>
 #include <QDir>
 
@@ -12,12 +13,12 @@ int main(int argc, char *argv[])
     app.setApplicationName("SunderBrowser");
     app.setApplicationVersion("1.0.0");
 
-    // Иконка окна – загружаем из файловой системы (там же, где и остальные иконки)
+    Logger::init("logs");
+
     QString iconPath = QCoreApplication::applicationDirPath() + "/assets/icons/app.ico";
     if (QFile::exists(iconPath)) {
         app.setWindowIcon(QIcon(iconPath));
     } else {
-        // Если нет – попробуем просто "app.ico" в корне (старый вариант)
         app.setWindowIcon(QIcon("app.ico"));
     }
 
