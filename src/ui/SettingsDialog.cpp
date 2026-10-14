@@ -4,7 +4,6 @@
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
 #include <QLabel>
-#include <QHBoxLayout>
 
 SettingsDialog::SettingsDialog(QWidget *parent, BrowserController &controller)
     : QDialog(parent), m_controller(controller)
@@ -20,8 +19,8 @@ void SettingsDialog::setupUI()
 
     m_homePageEdit = new QLineEdit();
     m_searchEngineCombo = new QComboBox();
-    m_searchEngineCombo->addItem("Google", "https://www.google.com/search?q=");
-    m_searchEngineCombo->addItem("Bing", "https://www.bing.com/search?q=");
+    m_searchEngineCombo->addItem("Google",     "https://www.google.com/search?q=");
+    m_searchEngineCombo->addItem("Bing",       "https://www.bing.com/search?q=");
     m_searchEngineCombo->addItem("DuckDuckGo", "https://duckduckgo.com/?q=");
 
     m_jsCheckBox = new QCheckBox("Включить JavaScript");
@@ -30,38 +29,29 @@ void SettingsDialog::setupUI()
     m_zoomSlider->setRange(50, 300);
     m_zoomSlider->setTickInterval(10);
     m_zoomSlider->setTickPosition(QSlider::TicksBelow);
-    QLabel *zoomLabel = new QLabel("Масштаб страницы (%):");
-    QHBoxLayout *zoomLayout = new QHBoxLayout();
-    zoomLayout->addWidget(zoomLabel);
-    zoomLayout->addWidget(m_zoomSlider);
-    zoomLayout->addStretch();
 
     m_opacitySlider = new QSlider(Qt::Horizontal);
     m_opacitySlider->setRange(0, 100);
-    QLabel *opacityLabel = new QLabel("Прозрачность окна (%):");
-    QHBoxLayout *opacityLayout = new QHBoxLayout();
-    opacityLayout->addWidget(opacityLabel);
-    opacityLayout->addWidget(m_opacitySlider);
-    opacityLayout->addStretch();
 
     m_themeCombo = new QComboBox();
     m_themeCombo->addItem("Светлая");
     m_themeCombo->addItem("Тёмная");
     m_themeCombo->addItem("Системная");
 
-    QFormLayout *formLayout = new QFormLayout();
+    // QFormLayout сам создаёт метку слева, отдельные QLabel/HBoxLayout не нужны
+    auto *formLayout = new QFormLayout();
     formLayout->addRow("Домашняя страница:", m_homePageEdit);
     formLayout->addRow("Поисковая система:", m_searchEngineCombo);
     formLayout->addRow(m_jsCheckBox);
-    formLayout->addRow(zoomLabel, m_zoomSlider);
-    formLayout->addRow(opacityLabel, m_opacitySlider);
-    formLayout->addRow("Тема:", m_themeCombo);
+    formLayout->addRow("Масштаб страницы (%):",  m_zoomSlider);
+    formLayout->addRow("Прозрачность окна (%):", m_opacitySlider);
+    formLayout->addRow("Тема:",                  m_themeCombo);
 
-    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-    QVBoxLayout *mainLayout = new QVBoxLayout();
+    auto *mainLayout = new QVBoxLayout();
     mainLayout->addLayout(formLayout);
     mainLayout->addWidget(buttonBox);
     setLayout(mainLayout);
