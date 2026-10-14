@@ -21,6 +21,8 @@ public:
     BrowserTab* currentTab() const;
     int currentTabIndex() const;
     int tabCount() const;
+    int indexOf(BrowserTab *tab) const;            // NEW
+    QWidget* widgetAt(int index) const;            // NEW
     void setCurrentTab(BrowserTab *tab);
     void setCurrentIndex(int index);
     void setTabTitle(int index, const QString &title);
