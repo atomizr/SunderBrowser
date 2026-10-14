@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 project(SunderBrowser)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -8,14 +8,8 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets WebEngineWidgets)
 
-# -------------------------------------------------------------------
-# Подключение spdlog (header-only) 
-# Предполагаем, что заголовки лежат в 3rdparty/spdlog/include/
-# Если структура иная — отредактируйте путь ниже.
-# -------------------------------------------------------------------
 set(SPDLOG_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/spdlog)
 
-# Попробуем наиболее вероятный путь
 if(EXISTS ${SPDLOG_ROOT}/include/spdlog/spdlog.h)
     set(SPDLOG_INCLUDE_DIR ${SPDLOG_ROOT}/include)
 elseif(EXISTS ${SPDLOG_ROOT}/spdlog/spdlog.h)
@@ -23,12 +17,11 @@ elseif(EXISTS ${SPDLOG_ROOT}/spdlog/spdlog.h)
 elseif(EXISTS ${SPDLOG_ROOT}/spdlog.h)
     set(SPDLOG_INCLUDE_DIR ${SPDLOG_ROOT})
 else()
-    message(FATAL_ERROR "Cannot find spdlog headers. Expected in ${SPDLOG_ROOT}/include/spdlog/spdlog.h or similar.")
+    message(FATAL_ERROR "Cannot find spdlog headers.")
 endif()
 
 message(STATUS "spdlog include dir: ${SPDLOG_INCLUDE_DIR}")
 include_directories(${SPDLOG_INCLUDE_DIR})
-# -------------------------------------------------------------------
 
 qt_standard_project_setup()
 
@@ -47,6 +40,8 @@ add_executable(SunderBrowser
     src/services/BackgroundService.cpp
     src/services/IconService.h
     src/services/IconService.cpp
+    src/services/ProfileManager.h       
+    src/services/ProfileManager.cpp      
 
     src/ui/MainWindow.h
     src/ui/MainWindow.cpp
@@ -54,6 +49,8 @@ add_executable(SunderBrowser
     src/ui/BrowserTab.cpp
     src/ui/SettingsDialog.h
     src/ui/SettingsDialog.cpp
+    src/ui/WebPage.h                    
+    src/ui/WebPage.cpp                   
 
     src/utils/UrlUtils.h
     src/utils/UrlUtils.cpp
