@@ -65,7 +65,7 @@ public:
     void updateCurrentTabUI();
 
     // Очистка списка вкладок (вызывается при разрушении главного окна)
-    void clearTabs();  // FIXED: добавлен метод для очистки списка указателей
+    void clearTabs();
 
 signals:
     void urlChanged(const QUrl &url);
@@ -90,6 +90,7 @@ private:
 
     // Вспомогательные методы
     void setupTabSignals(BrowserTab *tab);
+    void setupDownloadHandler();  // NEW: один обработчик на default-профиль
 };
 
 #endif // BROWSERCONTROLLER_H
