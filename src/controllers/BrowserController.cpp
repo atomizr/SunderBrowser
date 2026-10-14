@@ -6,11 +6,17 @@
 #include <QWebEngineSettings>
 #include <QWebEngineHistory>
 #include <QWebEnginePage>
+#include <QWebEngineProfile>
+#include <QWebEngineDownloadRequest>
+#include <QFileDialog>
+#include <QStandardPaths>
+#include <QFileInfo>
 #include <QStatusBar>
 
 BrowserController::BrowserController(SettingsModel &settings, QObject *parent)
     : QObject(parent), m_settings(settings)
 {
+    setupDownloadHandler();
 }
 
 // ----- Геттеры -----
@@ -112,17 +118,26 @@ void BrowserController::addTab(const QUrl &url)
 
 void BrowserController::closeTab(int index)
 {
-    if (index < 0 || index >= m_tabs.size()) return;
-    BrowserTab *tab = m_tabs.takeAt(index);
-    // FIXED: Останавливаем загрузку перед удалением
+    if (!m_mainWindow || index < 0)
+        return;
+
+    // Берём вкладку именно по указателю — индексы в m_tabs и QTabWidget
+    // расходятся при перетаскивании (setMovable(true)).
+    BrowserTab *tab = qobject_cast<BrowserTab*>(m_mainWindow->widgetAt(index));
+    if (!tab)
+        return;
+
     if (tab->webView())
         tab->webView()->stop();
+
     m_mainWindow->removeTab(index);
-    delete tab;
+    m_tabs.removeOne(tab);
+    tab->deleteLater();
+
     emit tabCountChanged(m_tabs.size());
-    if (m_tabs.isEmpty()) {
+
+    if (m_tabs.isEmpty())
         addTab();
-    }
 }
 
 void BrowserController::closeCurrentTab()
@@ -133,11 +148,18 @@ void BrowserController::closeCurrentTab()
 
 void BrowserController::closeOtherTabs()
 {
-    int current = currentIndex();
-    if (current < 0) return;
-    for (int i = m_tabs.size() - 1; i >= 0; --i) {
-        if (i != current)
-            closeTab(i);
+    BrowserTab *keep = currentTab();
+    if (!keep)
+        return;
+
+    // m_tabs мутирует внутри closeTab — итерируемся по снимку
+    const auto tabsSnapshot = m_tabs;
+    for (BrowserTab *tab : tabsSnapshot) {
+        if (tab == keep)
+            continue;
+        const int idx = m_mainWindow->indexOf(tab);
+        if (idx >= 0)
+            closeTab(idx);
     }
 }
 
@@ -219,6 +241,31 @@ void BrowserController::applyTheme(int themeIndex)
     emit themeApplied();
 }
 
+void BrowserController::setupDownloadHandler()
+{
+    auto *profile = QWebEngineProfile::defaultProfile();
+    profile->setDownloadPath(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
+
+    // Один обработчик на default-профиль. Если подключать из каждой вкладки,
+    // на одну загрузку будет показано N диалогов.
+    connect(profile, &QWebEngineProfile::downloadRequested, this,
+            [](QWebEngineDownloadRequest *download) {
+                const QString suggested = QFileInfo(download->downloadFileName()).fileName();
+                const QString defaultPath =
+                    QStandardPaths::writableLocation(QStandardPaths::DownloadLocation)
+                    + "/" + suggested;
+                const QString savePath = QFileDialog::getSaveFileName(
+                    nullptr, QObject::tr("Сохранить файл"), defaultPath, QString());
+                if (savePath.isEmpty()) {
+                    download->cancel();
+                    return;
+                }
+                download->setDownloadDirectory(QFileInfo(savePath).absolutePath());
+                download->setDownloadFileName(QFileInfo(savePath).fileName());
+                download->accept();
+            });
+}
+
 void BrowserController::setupTabSignals(BrowserTab *tab)
 {
     connect(tab, &BrowserTab::titleChanged, this, [this, tab](const QString &title) {
@@ -236,14 +283,13 @@ void BrowserController::setupTabSignals(BrowserTab *tab)
     connect(tab, &BrowserTab::loadFinished, this, [this, tab](bool ok) {
         onTabLoadFinished(tab, ok);
     });
-    // FIXED: подключаем сигнал статусных сообщений от вкладки
     connect(tab, &BrowserTab::statusMessage, this, &BrowserController::showStatusMessage);
 }
 
 void BrowserController::onTabTitleChanged(BrowserTab *tab, const QString &title)
 {
     if (m_mainWindow) {
-        int idx = m_tabs.indexOf(tab);
+        int idx = m_mainWindow->indexOf(tab);
         if (idx >= 0) {
             m_mainWindow->setTabTitle(idx, title);
         }
@@ -263,12 +309,14 @@ void BrowserController::onTabUrlChanged(BrowserTab *tab, const QUrl &url)
 
 void BrowserController::onTabLoadStarted(BrowserTab *tab)
 {
+    Q_UNUSED(tab);
     showStatusMessage("Загрузка...", 0);
     emit loadStarted();
 }
 
 void BrowserController::onTabLoadFinished(BrowserTab *tab, bool ok)
 {
+    Q_UNUSED(tab);
     if (!ok) {
         showStatusMessage("Ошибка загрузки страницы", 3000);
     } else {
@@ -279,6 +327,7 @@ void BrowserController::onTabLoadFinished(BrowserTab *tab, bool ok)
 
 void BrowserController::onTabLoadProgress(BrowserTab *tab, int progress)
 {
+    Q_UNUSED(tab);
     emit loadProgress(progress);
 }
 
@@ -290,9 +339,8 @@ void BrowserController::updateCurrentTabUI()
     onTabTitleChanged(tab, tab->webView()->title());
 }
 
-// FIXED: реализация clearTabs
 void BrowserController::clearTabs()
 {
-    // Просто очищаем список, не удаляя объекты – они уже удалены вместе с MainWindow
+    // Просто очищаем список — объекты удалит QTabWidget вместе с MainWindow.
     m_tabs.clear();
 }
