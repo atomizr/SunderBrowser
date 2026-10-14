@@ -25,7 +25,6 @@ signals:
     void statusMessage(const QString &message, int timeout = 2000);
 
 private slots:
-    void onDownloadRequested(QWebEngineDownloadRequest *download);
     void onLoadFinished(bool ok);
 
 private:
