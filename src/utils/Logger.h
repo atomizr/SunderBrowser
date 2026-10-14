@@ -7,15 +7,17 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
-#define LOG_TRACE(...)    Logger::instance()->trace(__VA_ARGS__)
-#define LOG_DEBUG(...)    Logger::instance()->debug(__VA_ARGS__)
-#define LOG_INFO(...)     Logger::instance()->info(__VA_ARGS__)
-#define LOG_WARN(...)     Logger::instance()->warn(__VA_ARGS__)
-#define LOG_ERROR(...)    Logger::instance()->error(__VA_ARGS__)
-#define LOG_CRITICAL(...) Logger::instance()->critical(__VA_ARGS__)
+// SPDLOG_LOGGER_* передаёт source_loc (__FILE__, __LINE__),
+// поэтому в pattern [%s:%#] будет корректный файл/строка.
+#define LOG_TRACE(...)    SPDLOG_LOGGER_TRACE(Logger::instance(), __VA_ARGS__)
+#define LOG_DEBUG(...)    SPDLOG_LOGGER_DEBUG(Logger::instance(), __VA_ARGS__)
+#define LOG_INFO(...)     SPDLOG_LOGGER_INFO(Logger::instance(), __VA_ARGS__)
+#define LOG_WARN(...)     SPDLOG_LOGGER_WARN(Logger::instance(), __VA_ARGS__)
+#define LOG_ERROR(...)    SPDLOG_LOGGER_ERROR(Logger::instance(), __VA_ARGS__)
+#define LOG_CRITICAL(...) SPDLOG_LOGGER_CRITICAL(Logger::instance(), __VA_ARGS__)
 
-#define LOG_DEBUG_ONLY(...)  Logger::debugLogger()->debug(__VA_ARGS__)
-#define LOG_ERROR_ONLY(...)  Logger::errorLogger()->error(__VA_ARGS__)
+#define LOG_DEBUG_ONLY(...)  SPDLOG_LOGGER_DEBUG(Logger::debugLogger(), __VA_ARGS__)
+#define LOG_ERROR_ONLY(...)  SPDLOG_LOGGER_ERROR(Logger::errorLogger(), __VA_ARGS__)
 
 class Logger
 {
