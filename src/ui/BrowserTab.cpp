@@ -10,7 +10,6 @@
 #include <QFileInfo>
 #include <QStatusBar>
 #include <QMainWindow>
-#include <QWebEngineProfile>
 #include <QWebEnginePage>
 
 BrowserTab::BrowserTab(QWidget *parent)
@@ -42,9 +41,8 @@ BrowserTab::BrowserTab(QWidget *parent)
     connect(m_webView, &QWebEngineView::urlChanged, this, &BrowserTab::urlChanged);
     connect(m_webView, &QWebEngineView::titleChanged, this, &BrowserTab::titleChanged);
 
-    auto profile = m_webView->page()->profile();
-    profile->setDownloadPath(QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
-    connect(profile, &QWebEngineProfile::downloadRequested, this, &BrowserTab::onDownloadRequested);
+    // Обработчик downloadRequested устанавливается один раз
+    // в BrowserController::setupDownloadHandler() на QWebEngineProfile::defaultProfile().
 
     setupContextMenu();
 }
@@ -62,24 +60,25 @@ void BrowserTab::setupContextMenu()
 
 void BrowserTab::showContextMenu(const QPoint &pos)
 {
-    QMenu *menu = new QMenu;
+    // Используем стандартное меню (Back/Forward/Reload/Copy/Paste/Save image/Inspect)
+    // и добавляем свои пункты.
+    QMenu *menu = m_webView->createStandardContextMenu();
     menu->setAttribute(Qt::WA_DeleteOnClose);
 
+    menu->addSeparator();
+
     QAction *viewSource = menu->addAction("Просмотреть исходный код");
-    connect(viewSource, &QAction::triggered, [this]() {
-        QUrl currentUrl = m_webView->url();
+    connect(viewSource, &QAction::triggered, this, [this]() {
+        const QUrl currentUrl = m_webView->url();
         if (currentUrl.isValid() && !currentUrl.isEmpty()) {
-            QUrl viewSourceUrl("view-source:" + currentUrl.toString());
-            m_webView->load(viewSourceUrl);
+            m_webView->load(QUrl("view-source:" + currentUrl.toString()));
         } else {
             emit statusMessage("Нет страницы для просмотра исходного кода", 2000);
         }
     });
 
     QAction *saveSource = menu->addAction("Сохранить исходный код...");
-    connect(saveSource, &QAction::triggered, [this]() {
-        savePageSource();
-    });
+    connect(saveSource, &QAction::triggered, this, &BrowserTab::savePageSource);
 
     menu->popup(m_webView->mapToGlobal(pos));
 }
@@ -99,10 +98,10 @@ void BrowserTab::savePageSource()
         QString title = m_webView->title();
         if (!title.isEmpty()) {
             defaultName = title + ".html";
-            defaultName.replace(QRegularExpression("[<>:\"/\\|?*]"), "_");
+            defaultName.replace(QRegularExpression("[<>:\"/\\\\|?*]"), "_");
         }
 
-        QString savePath = QFileDialog::getSaveFileName(
+        const QString savePath = QFileDialog::getSaveFileName(
             this,
             "Сохранить исходный код",
             QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/" + defaultName,
@@ -124,21 +123,6 @@ void BrowserTab::savePageSource()
 
         emit statusMessage("Исходный код сохранён: " + QFileInfo(savePath).fileName(), 3000);
     });
-}
-
-void BrowserTab::onDownloadRequested(QWebEngineDownloadRequest *download)
-{
-    QString suggestedFileName = QFileInfo(download->downloadFileName()).fileName();
-    QString savePath = QFileDialog::getSaveFileName(this, "Сохранить файл",
-                                                     QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + "/" + suggestedFileName,
-                                                     QString());
-    if (!savePath.isEmpty()) {
-        download->setDownloadDirectory(QFileInfo(savePath).absolutePath());
-        download->setDownloadFileName(QFileInfo(savePath).fileName());
-        download->accept();
-    } else {
-        download->cancel();
-    }
 }
 
 void BrowserTab::onLoadFinished(bool ok)
