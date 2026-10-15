@@ -8,9 +8,6 @@
 
 int main(int argc, char *argv[])
 {
-    // --log-level=3 подавляет шумные сообщения Chromium в stderr (INFO, WARNING, ERROR).
-    // --use-system-ca-certificates заставляет Chromium использовать системное хранилище сертификатов,
-    // что может помочь при корпоративных или антивирусных SSL-сертификатах.
     qputenv("QTWEBENGINE_CHROMIUM_FLAGS",
             "--log-level=3 "
             "--use-system-ca-certificates");
